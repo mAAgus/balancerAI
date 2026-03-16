@@ -1,0 +1,72 @@
+version: "3.9"
+
+services:
+  ai-balancer:
+    build: .
+    container_name: ai-balancer
+    ports:
+      - "9080:9080"
+    environment:
+      - AI_BALANCER_SERVER_BIND_ADDR=:9080
+    depends_on:
+      - jaeger
+      - prometheus
+      - loki
+    logging:
+      driver: "json-file"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./docker/loki-config.yml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - ./docker/promtail-config.yml:/etc/promtail/config.yml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    environment:
+      - DOCKER_API_VERSION=1.44
+    depends_on:
+      - loki
+  chat-model:
+    image: hashicorp/http-echo
+    command: ["-text={\"response\":\"chat-response\"}"]
+    ports:
+      - "8081:5678"
+
+volumes:
+  loki-data:
